@@ -1,0 +1,209 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recruitment-database
+  namespace: recruitment-platform
+  labels:
+    app: recruitment-database
+    component: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: recruitment-database
+  template:
+    metadata:
+      labels:
+        app: recruitment-database
+        component: database
+    spec:
+      containers:
+      - name: sqlserver
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        ports:
+        - containerPort: 1433
+          name: sql
+        env:
+        - name: ACCEPT_EULA
+          value: "Y"
+        - name: MSSQL_SA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: database-secrets
+              key: sa-password
+        - name: MSSQL_PID
+          value: "Standard"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: sqldata
+          mountPath: /var/opt/mssql/data
+        - name: sqlbackups
+          mountPath: /var/opt/mssql/backups
+        - name: init-scripts
+          mountPath: /docker-entrypoint-initdb.d
+        livenessProbe:
+          exec:
+            command:
+            - /opt/mssql-tools/bin/sqlcmd
+            - -S
+            - localhost
+            - -U
+            - sa
+            - -P
+            - $(MSSQL_SA_PASSWORD)
+            - -Q
+            - "SELECT 1"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /opt/mssql-tools/bin/sqlcmd
+            - -S
+            - localhost
+            - -U
+            - sa
+            - -P
+            - $(MSSQL_SA_PASSWORD)
+            - -Q
+            - "SELECT 1"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: sqldata
+        persistentVolumeClaim:
+          claimName: sql-data-pvc
+      - name: sqlbackups
+        persistentVolumeClaim:
+          claimName: sql-backups-pvc
+      - name: init-scripts
+        configMap:
+          name: database-init-scripts
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recruitment-database-service
+  namespace: recruitment-platform
+  labels:
+    app: recruitment-database
+spec:
+  selector:
+    app: recruitment-database
+  ports:
+  - name: sql
+    port: 1433
+    targetPort: 1433
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sql-data-pvc
+  namespace: recruitment-platform
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: fast-ssd
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sql-backups-pvc
+  namespace: recruitment-platform
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: standard
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: database-init-scripts
+  namespace: recruitment-platform
+data:
+  init-database.sql: |
+    -- Database initialization script
+    CREATE DATABASE IF NOT EXISTS Recruitment;
+    GO
+
+    USE Recruitment;
+    GO
+
+    -- Create application user
+    IF NOT EXISTS (SELECT name FROM sys.sql_logins WHERE name = 'recruitment_user')
+    BEGIN
+        CREATE LOGIN recruitment_user WITH PASSWORD = '$(DB_USER_PASSWORD)';
+        CREATE USER recruitment_user FOR LOGIN recruitment_user;
+        ALTER ROLE db_owner ADD MEMBER recruitment_user;
+    END
+    GO
+
+    -- Enable necessary features
+    EXEC sp_configure 'contained database authentication', 1;
+    RECONFIGURE;
+    GO
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: database-backup
+  namespace: recruitment-platform
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: backup
+            image: mcr.microsoft.com/mssql/server:2022-latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              # Wait for SQL Server to be ready
+              until /opt/mssql-tools/bin/sqlcmd -S recruitment-database-service -U sa -P $(SA_PASSWORD) -Q "SELECT 1" &> /dev/null; do
+                echo "Waiting for database..."
+                sleep 5
+              done
+
+              # Create backup
+              BACKUP_DATE=$(date +%Y%m%d_%H%M%S)
+              BACKUP_PATH="/var/opt/mssql/backups/recruitment_$BACKUP_DATE.bak"
+
+              /opt/mssql-tools/bin/sqlcmd \
+                -S recruitment-database-service \
+                -U sa \
+                -P $(SA_PASSWORD) \
+                -Q "BACKUP DATABASE Recruitment TO DISK = '$BACKUP_PATH' WITH COMPRESSION"
+
+              echo "Backup completed: $BACKUP_PATH"
+            env:
+            - name: SA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: sa-password
+          restartPolicy: OnFailure

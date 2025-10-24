@@ -1,0 +1,56 @@
+apiVersion: 1
+
+providers:
+  - name: 'Recruitment Platform'
+    orgId: 1
+    folder: 'Recruitment Platform'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+
+dashboards:
+  # Main Overview Dashboard
+  - name: 'recruitment-overview'
+    type: 'file'
+    org_id: 1
+    folder: 'Recruitment Platform'
+    options:
+      path: '/var/lib/grafana/dashboards/recruitment-overview.json'
+
+  # API Performance Dashboard
+  - name: 'api-performance'
+    type: 'file'
+    org_id: 1
+    folder: 'Recruitment Platform'
+    options:
+      path: '/var/lib/grafana/dashboards/api-performance.json'
+
+  # Database Dashboard
+  - name: 'database-monitoring'
+    type: 'file'
+    org_id: 1
+    folder: 'Recruitment Platform'
+    options:
+      path: '/var/lib/grafana/dashboards/database-monitoring.json'
+
+  # Business Metrics Dashboard
+  - name: 'business-metrics'
+    type: 'file'
+    org_id: 1
+    folder: 'Recruitment Platform'
+    options:
+      path: '/var/lib/grafana/dashboards/business-metrics.json'
+
+  # AI Services Dashboard
+  - name: 'ai-services'
+    type: 'file'
+    org_id: 1
+    folder: 'Recruitment Platform'
+    options:
+      path: '/var/lib/grafana/dashboards/ai-services.json'
+
+# Dashboard JSON templates would be defined here
+# In a real deployment, these would be separate JSON files

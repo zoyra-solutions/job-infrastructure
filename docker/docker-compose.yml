@@ -1,0 +1,208 @@
+version: '3.8'
+
+services:
+  # SQL Server Database
+  database:
+    image: mcr.microsoft.com/sql/server:2022-latest
+    container_name: recruitment-sql
+    restart: unless-stopped
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Passw0rd
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - sql_data:/var/opt/mssql
+      - ./database/init:/docker-entrypoint-initdb.d
+    networks:
+      - recruitment-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: recruitment-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - recruitment-network
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: recruitment-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - recruitment-network
+    command: server /data --console-address ":9001"
+
+  # RabbitMQ (Message Queue)
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: recruitment-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - recruitment-network
+
+  # Elasticsearch (Search Engine)
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: recruitment-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - recruitment-network
+
+  # Kibana (Monitoring Dashboard)
+  kibana:
+    image: kibana:8.11.0
+    container_name: recruitment-kibana
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - recruitment-network
+
+  # Backend API
+  api:
+    build:
+      context: ../../backend/src
+      dockerfile: ../../infrastructure/docker/backend/Dockerfile
+    container_name: recruitment-api
+    restart: unless-stopped
+    ports:
+      - "5000:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Server=database;Database=Recruitment;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;
+      - Redis__ConnectionString=redis:6379
+      - MinIO__Endpoint=minio:9000
+      - MinIO__AccessKey=minioadmin
+      - MinIO__SecretKey=minioadmin
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Username=admin
+      - RabbitMQ__Password=admin123
+      - Elasticsearch__Url=http://elasticsearch:9200
+    depends_on:
+      - database
+      - redis
+      - minio
+      - rabbitmq
+      - elasticsearch
+    networks:
+      - recruitment-network
+
+  # React Web Application
+  web:
+    build:
+      context: ../../frontend/web
+      dockerfile: ../../infrastructure/docker/frontend/Dockerfile
+    container_name: recruitment-web
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000
+      - REACT_APP_WS_URL=ws://localhost:5000
+    depends_on:
+      - api
+    networks:
+      - recruitment-network
+
+  # AI CV Parser Service
+  ai-cv-parser:
+    build:
+      context: ../../ai-services/cv-parser
+      dockerfile: ../../infrastructure/docker/ai-services/Dockerfile
+    container_name: recruitment-ai-parser
+    restart: unless-stopped
+    ports:
+      - "8001:80"
+    environment:
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    depends_on:
+      - minio
+    networks:
+      - recruitment-network
+
+  # AI Job Matcher Service
+  ai-job-matcher:
+    build:
+      context: ../../ai-services/job-matcher
+      dockerfile: ../../infrastructure/docker/ai-services/Dockerfile
+    container_name: recruitment-ai-matcher
+    restart: unless-stopped
+    ports:
+      - "8002:80"
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - recruitment-network
+
+  # Reverse Proxy (Optional - for production)
+  nginx:
+    image: nginx:alpine
+    container_name: recruitment-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - web
+      - api
+    networks:
+      - recruitment-network
+
+volumes:
+  sql_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+
+networks:
+  recruitment-network:
+    driver: bridge

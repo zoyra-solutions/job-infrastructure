@@ -3,17 +3,15 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Copy project files
-COPY ["backend/src/Recruitment.API/Recruitment.API.csproj", "Recruitment.API/"]
-COPY ["backend/src/Recruitment.Application/Recruitment.Application.csproj", "Recruitment.Application/"]
-COPY ["backend/src/Recruitment.Infrastructure/Recruitment.Infrastructure.csproj", "Recruitment.Infrastructure/"]
-COPY ["backend/src/Recruitment.Domain/Recruitment.Domain.csproj", "Recruitment.Domain/"]
-COPY ["backend/src/Recruitment.Common/Recruitment.Common.csproj", "Recruitment.Common/"]
+COPY ["Recruitment.API/Recruitment.API.csproj", "Recruitment.API/"]
+COPY ["Recruitment.Application/Recruitment.Application.csproj", "Recruitment.Application/"]
+COPY ["Recruitment.Infrastructure/Recruitment.Infrastructure.csproj", "Recruitment.Infrastructure/"]
 
 # Restore packages
 RUN dotnet restore "Recruitment.API/Recruitment.API.csproj"
 
 # Copy source code
-COPY backend/src/ .
+COPY . .
 
 # Build the application
 WORKDIR "/src/Recruitment.API"

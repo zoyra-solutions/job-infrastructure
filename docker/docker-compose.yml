@@ -14,7 +14,6 @@ services:
       - "1433:1433"
     volumes:
       - sql_data:/var/opt/mssql
-      - ./database/init:/docker-entrypoint-initdb.d
     networks:
       - recruitment-network
 
@@ -96,8 +95,8 @@ services:
   # Backend API
   api:
     build:
-      context: ../../backend/src
-      dockerfile: ../../infrastructure/docker/backend/Dockerfile
+      context: ../../job-backend/src
+      dockerfile: ../../job-infrastructure/docker/backend/Dockerfile
     container_name: recruitment-api
     restart: unless-stopped
     ports:
@@ -123,73 +122,72 @@ services:
     networks:
       - recruitment-network
 
-  # React Web Application
-  web:
-    build:
-      context: ../../frontend/web
-      dockerfile: ../../infrastructure/docker/frontend/Dockerfile
-    container_name: recruitment-web
-    restart: unless-stopped
-    ports:
-      - "3000:80"
-    environment:
-      - REACT_APP_API_URL=http://localhost:5000
-      - REACT_APP_WS_URL=ws://localhost:5000
-    depends_on:
-      - api
-    networks:
-      - recruitment-network
+  # React Web Application (disabled until frontend scaffold is added)
+  # web:
+  #   build:
+  #     context: ../../job-frontend/web
+  #     dockerfile: ../../job-infrastructure/docker/frontend/Dockerfile
+  #   container_name: recruitment-web
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:80"
+  #   environment:
+  #     - REACT_APP_API_URL=http://localhost:5000
+  #     - REACT_APP_WS_URL=ws://localhost:5000
+  #   depends_on:
+  #     - api
+  #   networks:
+  #     - recruitment-network
 
-  # AI CV Parser Service
-  ai-cv-parser:
-    build:
-      context: ../../ai-services/cv-parser
-      dockerfile: ../../infrastructure/docker/ai-services/Dockerfile
-    container_name: recruitment-ai-parser
-    restart: unless-stopped
-    ports:
-      - "8001:80"
-    environment:
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-    depends_on:
-      - minio
-    networks:
-      - recruitment-network
+  # AI Services (disabled until Dockerfiles are added)
+  # ai-cv-parser:
+  #   build:
+  #     context: ../../job-ai-services/cv-parser
+  #     dockerfile: ../../job-infrastructure/docker/ai-services/Dockerfile
+  #   container_name: recruitment-ai-parser
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8001:80"
+  #   environment:
+  #     - MINIO_ENDPOINT=minio:9000
+  #     - MINIO_ACCESS_KEY=minioadmin
+  #     - MINIO_SECRET_KEY=minioadmin
+  #   depends_on:
+  #     - minio
+  #   networks:
+  #     - recruitment-network
 
-  # AI Job Matcher Service
-  ai-job-matcher:
-    build:
-      context: ../../ai-services/job-matcher
-      dockerfile: ../../infrastructure/docker/ai-services/Dockerfile
-    container_name: recruitment-ai-matcher
-    restart: unless-stopped
-    ports:
-      - "8002:80"
-    environment:
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-    depends_on:
-      - elasticsearch
-    networks:
-      - recruitment-network
+  # ai-job-matcher:
+  #   build:
+  #     context: ../../job-ai-services/job-matcher
+  #     dockerfile: ../../job-infrastructure/docker/ai-services/Dockerfile
+  #   container_name: recruitment-ai-matcher
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8002:80"
+  #   environment:
+  #     - ELASTICSEARCH_URL=http://elasticsearch:9200
+  #   depends_on:
+  #     - elasticsearch
+  #   networks:
+  #     - recruitment-network
 
-  # Reverse Proxy (Optional - for production)
-  nginx:
-    image: nginx:alpine
-    container_name: recruitment-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./nginx/ssl:/etc/nginx/ssl
-    depends_on:
-      - web
-      - api
-    networks:
-      - recruitment-network
+  # Reverse Proxy (disabled while web is not present)
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: recruitment-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+  #     - ./nginx/ssl:/etc/nginx/ssl
+  #   depends_on:
+  #     - web
+  #     - api
+  #   networks:
+  #     - recruitment-network
 
 volumes:
   sql_data:
